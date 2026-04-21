@@ -1,0 +1,27 @@
+{
+	"servers": {
+		"aptos-mcp": {
+			"command": "npx",
+			"args": [
+				"@aptos-labs/aptos-mcp@0.0.22"
+			],
+			"env": {
+				"APTOS_BOT_KEY": "${input:geomiBotKey}"
+			},
+			"cwd": "${input:cwd}",
+			"type": "stdio"
+		}
+	},
+	"inputs": [
+		{
+			"id": "geomiBotKey",
+			"type": "promptString",
+			"description": "Geomi Bot API Key"
+		},
+		{
+			"id": "cwd",
+			"type": "promptString",
+			"description": "Working Directory"
+		}
+	]
+}

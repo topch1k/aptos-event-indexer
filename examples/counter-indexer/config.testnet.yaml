@@ -1,0 +1,13 @@
+processor_name: counter_indexer
+
+transaction_stream:
+  indexer_grpc_data_service_address: https://grpc.testnet.aptoslabs.com:443
+  auth_token: "REPLACE_WITH_APTOS_AUTH_TOKEN"
+  request_name_header: counter-indexer
+  starting_version: 0
+
+db:
+  postgres_connection_string: postgresql://indexer:indexer@localhost:5432/indexer
+  pool_size: 20
+
+mode: { type: head }

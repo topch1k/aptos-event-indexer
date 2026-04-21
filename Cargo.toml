@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = ["crates/aptos-event-indexer", "examples/counter-indexer"]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+anyhow = "1"
+async-trait = "0.1"
+bigdecimal = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+diesel = { version = "~2.3", features = ["postgres", "chrono", "numeric", "serde_json"] }
+diesel-async = { version = "0.7", features = ["postgres", "bb8"] }
+diesel_migrations = { version = "2.1", features = ["postgres"] }
+field_count = "0.1"
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+thiserror = "1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+url = "2"
+
+aptos-indexer-processor-sdk = { git = "https://github.com/aptos-labs/aptos-indexer-processor-sdk.git", tag = "aptos-indexer-processor-sdk-v2.4.0", features = ["postgres_full"] }

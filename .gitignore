@@ -1,0 +1,6 @@
+/target
+.env
+.DS_Store
+
+# Move build artifacts
+examples/*/build/
