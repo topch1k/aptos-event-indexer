@@ -23,3 +23,14 @@ diesel::table! {
         inserted_at -> Timestamp,
     }
 }
+
+diesel::table! {
+    greeted_events (transaction_version, event_index) {
+        transaction_version -> Int8,
+        event_index -> Int8,
+        transaction_timestamp -> Nullable<Timestamp>,
+        who -> Text,
+        message -> Text,
+        inserted_at -> Timestamp,
+    }
+}

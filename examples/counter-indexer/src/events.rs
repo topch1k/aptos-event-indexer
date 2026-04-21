@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use aptos_event_indexer::ArcDbPool;
 use aptos_event_indexer::aptos_protos::transaction::v1::Event as EventPb;
+use aptos_event_indexer::ArcDbPool;
 use aptos_event_indexer::{EventContext, Indexable, Storer};
 use async_trait::async_trait;
 use chrono::NaiveDateTime;
@@ -9,12 +9,7 @@ use diesel_async::RunQueryDsl;
 use field_count::FieldCount;
 use serde::Deserialize;
 
-use crate::schema::{counter_decremented_events, counter_incremented_events};
-
-/// Replace with your published module address before running against a real
-/// deployment. Must exactly match the fully-qualified type emitted on-chain.
-pub const INCREMENTED_TYPE_STR: &str = "0xCAFE::counter::CounterIncrementedEvent";
-pub const DECREMENTED_TYPE_STR: &str = "0xCAFE::counter::CounterDecrementedEvent";
+use crate::schema::{counter_decremented_events, counter_incremented_events, greeted_events};
 
 /// Move `u64` fields are JSON-encoded as decimal strings.
 fn parse_u64(s: &str) -> Result<u64> {
@@ -41,7 +36,6 @@ pub struct CounterIncrementedEvent {
 }
 
 impl Indexable for CounterIncrementedEvent {
-    const TYPE_STR: &'static str = INCREMENTED_TYPE_STR;
     const NAME: &'static str = "counter_incremented";
 
     fn from_event(event: &EventPb, _ctx: &EventContext) -> Result<Self> {
@@ -127,7 +121,6 @@ pub struct CounterDecrementedEvent {
 }
 
 impl Indexable for CounterDecrementedEvent {
-    const TYPE_STR: &'static str = DECREMENTED_TYPE_STR;
     const NAME: &'static str = "counter_decremented";
 
     fn from_event(event: &EventPb, _ctx: &EventContext) -> Result<Self> {
@@ -190,6 +183,85 @@ impl Storer<CounterDecrementedEvent> for DecrementedStorer {
             .execute(&mut conn)
             .await
             .context("insert counter_decremented_events")?;
+        Ok(())
+    }
+}
+
+// ─────────────────────────── Greeted ───────────────────────────
+//
+// From a *different* Move module published at a *different* on-chain
+// address. Registered alongside the counter events to demonstrate that one
+// `EventRegistry` can fan out across modules and addresses.
+
+#[derive(Debug, Clone, Deserialize)]
+struct GreetedPayload {
+    who: String,
+    message: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct GreetedEvent {
+    pub who: String,
+    pub message: String,
+}
+
+impl Indexable for GreetedEvent {
+    const NAME: &'static str = "greeted";
+
+    fn from_event(event: &EventPb, _ctx: &EventContext) -> Result<Self> {
+        let p: GreetedPayload = serde_json::from_str(&event.data)
+            .with_context(|| format!("parsing GreetedEvent from {}", event.data))?;
+        Ok(Self {
+            who: p.who,
+            message: p.message,
+        })
+    }
+}
+
+#[derive(Debug, Insertable, FieldCount)]
+#[diesel(table_name = greeted_events)]
+struct GreetedRow {
+    transaction_version: i64,
+    event_index: i64,
+    transaction_timestamp: Option<NaiveDateTime>,
+    who: String,
+    message: String,
+}
+
+pub struct GreeterStorer;
+
+#[async_trait]
+impl Storer<GreetedEvent> for GreeterStorer {
+    async fn store(
+        &self,
+        pool: &ArcDbPool,
+        items: &[(GreetedEvent, EventContext)],
+    ) -> Result<()> {
+        if items.is_empty() {
+            return Ok(());
+        }
+        let rows: Vec<GreetedRow> = items
+            .iter()
+            .map(|(e, ctx)| GreetedRow {
+                transaction_version: ctx.transaction_version as i64,
+                event_index: ctx.event_index as i64,
+                transaction_timestamp: ctx.transaction_timestamp,
+                who: e.who.clone(),
+                message: e.message.clone(),
+            })
+            .collect();
+
+        let mut conn = pool.get().await.context("checkout conn")?;
+        diesel::insert_into(greeted_events::table)
+            .values(&rows)
+            .on_conflict((
+                greeted_events::transaction_version,
+                greeted_events::event_index,
+            ))
+            .do_nothing()
+            .execute(&mut conn)
+            .await
+            .context("insert greeted_events")?;
         Ok(())
     }
 }
