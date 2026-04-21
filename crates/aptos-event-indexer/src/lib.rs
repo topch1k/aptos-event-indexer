@@ -22,6 +22,7 @@
 
 pub mod config;
 pub mod context;
+pub mod error;
 pub mod registry;
 pub mod runner;
 pub mod steps;
@@ -39,6 +40,7 @@ pub use aptos_indexer_processor_sdk::{
 
 pub use config::{DbConfig, IndexerConfig, RunMode};
 pub use context::EventContext;
+pub use error::{IndexerError, Result};
 pub use registry::{EventRegistry, EventRegistryBuilder, ProcessorId};
 pub use runner::EventIndexer;
 pub use traits::{

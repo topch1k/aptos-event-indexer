@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use aptos_indexer_processor_sdk::{
     builder::ProcessorBuilder,
     common_steps::{
@@ -21,6 +20,7 @@ use aptos_indexer_processor_sdk::{
 use tracing::{info, instrument};
 
 use crate::config::IndexerConfig;
+use crate::error::{IndexerError, Result};
 use crate::registry::EventRegistry;
 use crate::steps::{RegistryDispatcherStep, RegistryHandlerStep, RegistryStorerStep};
 
@@ -57,10 +57,9 @@ impl EventIndexer {
         err,
     )]
     pub async fn run(self) -> Result<()> {
-        assert!(
-            !self.registry.is_empty(),
-            "EventRegistry is empty — register at least one EventProcessor before calling run()"
-        );
+        if self.registry.is_empty() {
+            return Err(IndexerError::EmptyRegistry);
+        }
 
         let Self { config, registry } = self;
         let registry = Arc::new(registry);
@@ -70,19 +69,21 @@ impl EventIndexer {
         // 1. Pool + migrations (library + every registered processor).
         let pool = new_db_pool(&config.db.postgres_connection_string, config.db.pool_size)
             .await
-            .context("building Postgres pool")?;
+            .map_err(|e| IndexerError::PoolBuild(e.into()))?;
         apply_migrations(&config, &pool, &registry).await;
 
         // 2. Chain-id sanity check.
         let stream_cfg = config.effective_stream_config();
         let chain_checker = PostgresChainIdChecker::new(pool.clone());
-        check_or_update_chain_id(&stream_cfg, &chain_checker).await?;
+        check_or_update_chain_id(&stream_cfg, &chain_checker)
+            .await
+            .map_err(|e| IndexerError::ChainIdCheck(e.into()))?;
 
         // 3. Resolve starting version (respects checkpoint or backfill alias).
         let starting_version =
             get_starting_version(config.status_key(), stream_cfg.clone(), pool.clone())
                 .await
-                .context("resolving starting version")?;
+                .map_err(IndexerError::StartingVersion)?;
         let stream_cfg = with_starting_version(stream_cfg, starting_version);
         info!(
             starting_version,
@@ -91,7 +92,9 @@ impl EventIndexer {
         );
 
         // 4. Wire the pipeline.
-        let tx_stream = TransactionStreamStep::new(stream_cfg).await?;
+        let tx_stream = TransactionStreamStep::new(stream_cfg)
+            .await
+            .map_err(|e| IndexerError::TransactionStream(e.into()))?;
         let dispatcher = RegistryDispatcherStep::new(registry.clone());
         let storer = RegistryStorerStep::new(registry.clone(), pool.clone());
         let handlers = RegistryHandlerStep::new(registry);
