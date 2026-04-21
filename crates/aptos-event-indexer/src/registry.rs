@@ -13,7 +13,7 @@ pub struct ProcessorId(pub u16);
 /// order so migrations are applied deterministically.
 #[derive(Clone, Default)]
 pub struct EventRegistry {
-    by_type_str: HashMap<&'static str, ProcessorId>,
+    by_type_str: HashMap<String, ProcessorId>,
     processors: Vec<ArcEventProcessor>,
 }
 
@@ -52,9 +52,9 @@ impl EventRegistryBuilder {
     /// Register a processor. Panics on duplicate `type_str` so the error
     /// surfaces at startup instead of silently shadowing.
     pub fn register<P: EventProcessor>(mut self, processor: P) -> Self {
-        let type_str = processor.type_str();
+        let type_str = processor.type_str().to_owned();
         assert!(
-            !self.registry.by_type_str.contains_key(type_str),
+            !self.registry.by_type_str.contains_key(&type_str),
             "duplicate EventProcessor registered for type_str = {type_str}"
         );
         let id = ProcessorId(self.registry.processors.len() as u16);

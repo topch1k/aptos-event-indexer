@@ -17,11 +17,12 @@ use crate::traits::event_processor::{EventProcessor, ParsedItem};
 ///
 /// Implement this plus an associated [`Storer`] and you get a ready-made
 /// [`EventProcessor`] by wrapping it in [`TypedEventProcessor`].
+///
+/// The fully-qualified Move type string is supplied at **registration time**
+/// via [`TypedEventProcessor::new`] — it is intentionally not a trait
+/// constant so the same Rust type can be bound to different on-chain
+/// deployments (localnet / testnet / mainnet) without recompiling.
 pub trait Indexable: Sized + Clone + Send + Sync + 'static {
-    /// Fully-qualified Move struct tag, e.g.
-    /// `"0xMARKET::marketplace::Listed"`.
-    const TYPE_STR: &'static str;
-
     /// Human-readable processor name (e.g. `"marketplace_listed"`).
     const NAME: &'static str;
 
@@ -45,6 +46,7 @@ pub trait Storer<E: Indexable>: Send + Sync + 'static {
 /// / `.with_migrations(...)` before registering with the
 /// [`crate::EventRegistry`].
 pub struct TypedEventProcessor<E: Indexable> {
+    type_str: String,
     storer: Arc<dyn Storer<E>>,
     handlers: Vec<Arc<dyn EventHandler<E>>>,
     migrations_fn: Option<fn() -> EmbeddedMigrations>,
@@ -52,8 +54,12 @@ pub struct TypedEventProcessor<E: Indexable> {
 }
 
 impl<E: Indexable> TypedEventProcessor<E> {
-    pub fn new<S: Storer<E>>(storer: S) -> Self {
+    /// Build a processor bound to `type_str` — the fully-qualified Move
+    /// struct tag to match on, e.g.
+    /// `format!("{addr}::counter::CounterIncrementedEvent")`.
+    pub fn new<S: Storer<E>>(type_str: impl Into<String>, storer: S) -> Self {
         Self {
+            type_str: type_str.into(),
             storer: Arc::new(storer),
             handlers: Vec::new(),
             migrations_fn: None,
@@ -123,8 +129,8 @@ impl<E: Indexable> TypedEventProcessor<E> {
 
 #[async_trait]
 impl<E: Indexable> EventProcessor for TypedEventProcessor<E> {
-    fn type_str(&self) -> &'static str {
-        E::TYPE_STR
+    fn type_str(&self) -> &str {
+        &self.type_str
     }
 
     fn name(&self) -> &'static str {
@@ -133,7 +139,7 @@ impl<E: Indexable> EventProcessor for TypedEventProcessor<E> {
 
     fn parse(&self, event: &Event, ctx: &EventContext) -> Result<Box<dyn Any + Send + Sync>> {
         let parsed = E::from_event(event, ctx)
-            .with_context(|| format!("parsing {}", E::TYPE_STR))?;
+            .with_context(|| format!("parsing {}", self.type_str))?;
         Ok(Box::new(parsed))
     }
 
