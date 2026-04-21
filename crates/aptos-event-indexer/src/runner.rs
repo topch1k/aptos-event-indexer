@@ -1,26 +1,26 @@
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use aptos_indexer_processor_sdk::{
     builder::ProcessorBuilder,
     common_steps::{
-        DEFAULT_UPDATE_PROCESSOR_STATUS_SECS, TransactionStreamStep, VersionTrackerStep,
+        TransactionStreamStep, VersionTrackerStep, DEFAULT_UPDATE_PROCESSOR_STATUS_SECS,
     },
     postgres::{
-        SDK_MIGRATIONS,
         utils::{
             checkpoint::{
-                PostgresChainIdChecker, PostgresProcessorStatusSaver, get_starting_version,
+                get_starting_version, PostgresChainIdChecker, PostgresProcessorStatusSaver,
             },
-            database::{ArcDbPool, new_db_pool, run_migrations},
+            database::{new_db_pool, run_migrations, ArcDbPool},
         },
+        SDK_MIGRATIONS,
     },
     traits::IntoRunnableStep,
     utils::chain_id_check::check_or_update_chain_id,
 };
-use tracing::info;
+use tracing::{info, instrument};
 
 use crate::config::IndexerConfig;
+use crate::error::{IndexerError, Result};
 use crate::registry::EventRegistry;
 use crate::steps::{RegistryDispatcherStep, RegistryHandlerStep, RegistryStorerStep};
 
@@ -45,41 +45,45 @@ impl EventIndexer {
     /// The indexer process is the entire library's entry point: it applies
     /// migrations, verifies the chain id, resolves the starting version, and
     /// drives the SDK's `ProcessorBuilder` to exhaustion.
+    #[instrument(
+        level = "info",
+        name = "event_indexer",
+        skip_all,
+        fields(
+            processor = self.config.processor_name.as_str(),
+            status_key = self.config.status_key(),
+            mode = ?self.config.mode,
+        ),
+        err,
+    )]
     pub async fn run(self) -> Result<()> {
-        assert!(
-            !self.registry.is_empty(),
-            "EventRegistry is empty — register at least one EventProcessor before calling run()"
-        );
+        if self.registry.is_empty() {
+            return Err(IndexerError::EmptyRegistry);
+        }
 
         let Self { config, registry } = self;
         let registry = Arc::new(registry);
 
-        info!(
-            processor = config.processor_name.as_str(),
-            status_key = config.status_key(),
-            processors = registry.len(),
-            "starting indexer"
-        );
+        info!(processors = registry.len(), "starting indexer");
 
         // 1. Pool + migrations (library + every registered processor).
-        let pool = new_db_pool(
-            &config.db.postgres_connection_string,
-            config.db.pool_size,
-        )
-        .await
-        .context("building Postgres pool")?;
+        let pool = new_db_pool(&config.db.postgres_connection_string, config.db.pool_size)
+            .await
+            .map_err(|e| IndexerError::PoolBuild(e.into()))?;
         apply_migrations(&config, &pool, &registry).await;
 
         // 2. Chain-id sanity check.
         let stream_cfg = config.effective_stream_config();
         let chain_checker = PostgresChainIdChecker::new(pool.clone());
-        check_or_update_chain_id(&stream_cfg, &chain_checker).await?;
+        check_or_update_chain_id(&stream_cfg, &chain_checker)
+            .await
+            .map_err(|e| IndexerError::ChainIdCheck(e.into()))?;
 
         // 3. Resolve starting version (respects checkpoint or backfill alias).
         let starting_version =
             get_starting_version(config.status_key(), stream_cfg.clone(), pool.clone())
                 .await
-                .context("resolving starting version")?;
+                .map_err(IndexerError::StartingVersion)?;
         let stream_cfg = with_starting_version(stream_cfg, starting_version);
         info!(
             starting_version,
@@ -88,16 +92,15 @@ impl EventIndexer {
         );
 
         // 4. Wire the pipeline.
-        let tx_stream = TransactionStreamStep::new(stream_cfg).await?;
+        let tx_stream = TransactionStreamStep::new(stream_cfg)
+            .await
+            .map_err(|e| IndexerError::TransactionStream(e.into()))?;
         let dispatcher = RegistryDispatcherStep::new(registry.clone());
         let storer = RegistryStorerStep::new(registry.clone(), pool.clone());
         let handlers = RegistryHandlerStep::new(registry);
-        let status_saver =
-            PostgresProcessorStatusSaver::new(config.status_key(), pool.clone());
-        let version_tracker = VersionTrackerStep::new(
-            status_saver,
-            DEFAULT_UPDATE_PROCESSOR_STATUS_SECS,
-        );
+        let status_saver = PostgresProcessorStatusSaver::new(config.status_key(), pool.clone());
+        let version_tracker =
+            VersionTrackerStep::new(status_saver, DEFAULT_UPDATE_PROCESSOR_STATUS_SECS);
 
         let (_builder, output_receiver) =
             ProcessorBuilder::new_with_inputless_first_step(tx_stream.into_runnable_step())
@@ -133,11 +136,7 @@ impl EventIndexer {
     }
 }
 
-async fn apply_migrations(
-    config: &IndexerConfig,
-    pool: &ArcDbPool,
-    registry: &EventRegistry,
-) {
+async fn apply_migrations(config: &IndexerConfig, pool: &ArcDbPool, registry: &EventRegistry) {
     info!("applying SDK migrations");
     run_migrations(
         config.db.postgres_connection_string.clone(),
@@ -148,7 +147,10 @@ async fn apply_migrations(
 
     for processor in registry.processors() {
         if let Some(m) = processor.migrations() {
-            info!(processor = processor.name(), "applying processor migrations");
+            info!(
+                processor = processor.name(),
+                "applying processor migrations"
+            );
             run_migrations(
                 config.db.postgres_connection_string.clone(),
                 pool.clone(),

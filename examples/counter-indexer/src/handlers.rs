@@ -3,7 +3,7 @@ use aptos_event_indexer::{EventContext, EventHandler};
 use async_trait::async_trait;
 use tracing::info;
 
-use crate::events::{CounterDecrementedEvent, CounterIncrementedEvent};
+use crate::events::{CounterDecrementedEvent, CounterIncrementedEvent, GreetedEvent};
 
 /// Logs each event to stdout. Demonstrates a side-effect handler; swap for a
 /// real Kafka/Service Bus/webhook client in your own project.
@@ -47,6 +47,26 @@ impl EventHandler<CounterDecrementedEvent> for StdoutLoggerHandler {
                 new_value = event.new_value,
                 by = event.decrement_by,
                 "CounterDecremented"
+            );
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl EventHandler<GreetedEvent> for StdoutLoggerHandler {
+    fn name(&self) -> &'static str {
+        "stdout_logger(greeted)"
+    }
+
+    async fn handle(&self, batch: &[(GreetedEvent, EventContext)]) -> Result<()> {
+        for (event, ctx) in batch {
+            info!(
+                version = ctx.transaction_version,
+                event_index = ctx.event_index,
+                who = event.who.as_str(),
+                message = event.message.as_str(),
+                "Greeted"
             );
         }
         Ok(())

@@ -36,7 +36,9 @@ impl ParsedItem {
 #[async_trait]
 pub trait EventProcessor: Send + Sync + 'static {
     /// Fully-qualified Move type, e.g. `"0xADDR::marketplace::Listed"`.
-    fn type_str(&self) -> &'static str;
+    /// Supplied at registration time so the same Rust type can serve
+    /// multiple deployments of the same Move module.
+    fn type_str(&self) -> &str;
 
     /// Short name used for logging, metrics, and migration ordering.
     fn name(&self) -> &'static str;

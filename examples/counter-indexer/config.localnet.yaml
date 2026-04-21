@@ -1,0 +1,14 @@
+processor_name: counter_indexer_local
+
+transaction_stream:
+  indexer_grpc_data_service_address: http://localhost:50051
+  # Localnet ignores the auth token, but the field must be present.
+  auth_token: ""
+  request_name_header: counter-indexer
+  starting_version: 0
+
+db:
+  postgres_connection_string: postgresql://indexer:indexer@localhost:5432/indexer
+  pool_size: 20
+
+mode: { type: head }

@@ -4,7 +4,7 @@ use aptos_indexer_processor_sdk::traits::{AsyncRunType, AsyncStep, NamedStep, Pr
 use aptos_indexer_processor_sdk::types::transaction_context::TransactionContext;
 use aptos_indexer_processor_sdk::utils::errors::ProcessorError;
 use async_trait::async_trait;
-use tracing::{debug, error};
+use tracing::{debug, error, instrument};
 
 use crate::registry::EventRegistry;
 use crate::steps::dispatcher::DispatchedBatch;
@@ -38,11 +38,22 @@ impl Processable for RegistryHandlerStep {
     type Output = DispatchedBatch;
     type RunType = AsyncRunType;
 
+    #[instrument(
+        level = "debug",
+        name = "handle_batch",
+        skip_all,
+        fields(
+            start_version = ctx.metadata.start_version,
+            end_version = ctx.metadata.end_version,
+            group_count = tracing::field::Empty,
+        ),
+    )]
     async fn process(
         &mut self,
         ctx: TransactionContext<Self::Input>,
     ) -> Result<Option<TransactionContext<Self::Output>>, ProcessorError> {
         let groups = group_by_processor(ctx.data);
+        tracing::Span::current().record("group_count", groups.len());
 
         for (pid, items) in &groups {
             let processor = self.registry.processor(*pid);
@@ -55,12 +66,7 @@ impl Processable for RegistryHandlerStep {
             }
         }
 
-        debug!(
-            start_version = ctx.metadata.start_version,
-            end_version = ctx.metadata.end_version,
-            groups = groups.len(),
-            "handled batch"
-        );
+        debug!(groups = groups.len(), "handled batch");
 
         // Passthrough so downstream `VersionTrackerStep` can advance.
         let mut out: DispatchedBatch = Vec::new();

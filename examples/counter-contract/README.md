@@ -16,6 +16,6 @@ aptos move publish \
   --named-addresses counter=<YOUR_ACCOUNT_ADDRESS>
 ```
 
-After publishing, edit `TYPE_STR` constants in
-`examples/counter-indexer/src/events.rs` (or set them at build time) to use
-your deployed address.
+After publishing, export `COUNTER_MODULE_ADDR=0x<your deployed address>`
+before running the indexer. The `just run-example-local` recipe auto-injects
+this from the `local` CLI profile; for other targets set it yourself.

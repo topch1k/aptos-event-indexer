@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use aptos_indexer_processor_sdk::aptos_protos::transaction::v1::{
-    Event, Transaction, transaction::TxnData,
+    transaction::TxnData, Event, Transaction,
 };
 use aptos_indexer_processor_sdk::traits::{AsyncRunType, AsyncStep, NamedStep, Processable};
 use aptos_indexer_processor_sdk::types::transaction_context::TransactionContext;
 use aptos_indexer_processor_sdk::utils::errors::ProcessorError;
 use async_trait::async_trait;
 use chrono::DateTime;
-use tracing::{debug, warn};
+use tracing::{debug, instrument, trace, warn};
 
 use crate::context::EventContext;
 use crate::registry::{EventRegistry, ProcessorId};
@@ -45,6 +45,16 @@ impl Processable for RegistryDispatcherStep {
     type Output = DispatchedBatch;
     type RunType = AsyncRunType;
 
+    #[instrument(
+        level = "debug",
+        name = "dispatch_batch",
+        skip_all,
+        fields(
+            start_version = ctx.metadata.start_version,
+            end_version = ctx.metadata.end_version,
+            txn_count = ctx.data.len(),
+        ),
+    )]
     async fn process(
         &mut self,
         ctx: TransactionContext<Self::Input>,
@@ -61,6 +71,12 @@ impl Processable for RegistryDispatcherStep {
 
             for (event_index, event) in events.iter().enumerate() {
                 let Some(pid) = self.registry.lookup(&event.type_str) else {
+                    trace!(
+                        type_str = event.type_str.as_str(),
+                        version = txn.version,
+                        event_index,
+                        "unmatched event type, skipping"
+                    );
                     continue;
                 };
                 let processor = self.registry.processor(pid);
@@ -100,12 +116,7 @@ impl Processable for RegistryDispatcherStep {
             }
         }
 
-        debug!(
-            start_version = ctx.metadata.start_version,
-            end_version = ctx.metadata.end_version,
-            matched = out.len(),
-            "dispatched batch"
-        );
+        debug!(matched = out.len(), "dispatched batch");
 
         Ok(Some(TransactionContext {
             data: out,

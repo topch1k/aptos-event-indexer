@@ -33,7 +33,10 @@ pub struct DbConfig {
 pub enum RunMode {
     #[default]
     Head,
-    Backfill { alias: String, ending_version: u64 },
+    Backfill {
+        alias: String,
+        ending_version: u64,
+    },
 }
 
 impl IndexerConfig {
