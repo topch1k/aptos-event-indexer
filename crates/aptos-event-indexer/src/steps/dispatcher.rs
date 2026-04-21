@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use aptos_indexer_processor_sdk::aptos_protos::transaction::v1::{
-    Event, Transaction, transaction::TxnData,
+    transaction::TxnData, Event, Transaction,
 };
 use aptos_indexer_processor_sdk::traits::{AsyncRunType, AsyncStep, NamedStep, Processable};
 use aptos_indexer_processor_sdk::types::transaction_context::TransactionContext;

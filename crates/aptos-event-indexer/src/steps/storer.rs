@@ -57,10 +57,7 @@ impl Processable for RegistryStorerStep {
                     .store(&pool, items)
                     .await
                     .map_err(|e| ProcessorError::ProcessError {
-                        message: format!(
-                            "processor `{}` store failed: {e:#}",
-                            processor.name()
-                        ),
+                        message: format!("processor `{}` store failed: {e:#}", processor.name()),
                     })
             }
         });
@@ -90,9 +87,7 @@ impl Processable for RegistryStorerStep {
     }
 }
 
-pub(crate) fn group_by_processor(
-    batch: DispatchedBatch,
-) -> Vec<(ProcessorId, Vec<ParsedItem>)> {
+pub(crate) fn group_by_processor(batch: DispatchedBatch) -> Vec<(ProcessorId, Vec<ParsedItem>)> {
     let mut by_pid: HashMap<ProcessorId, Vec<ParsedItem>> = HashMap::new();
     for (pid, item) in batch {
         by_pid.entry(pid).or_default().push(item);

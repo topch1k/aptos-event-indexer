@@ -20,9 +20,10 @@ pub mod traits;
 // Re-export commonly needed SDK types so users don't have to track the git dep
 // independently.
 pub use aptos_indexer_processor_sdk::{
-    self as sdk, aptos_indexer_transaction_stream, aptos_protos,
+    self as sdk, aptos_indexer_transaction_stream,
     aptos_indexer_transaction_stream::TransactionStreamConfig,
-    postgres::utils::database::{ArcDbPool, MAX_DIESEL_PARAM_SIZE, execute_in_chunks, new_db_pool},
+    aptos_protos,
+    postgres::utils::database::{execute_in_chunks, new_db_pool, ArcDbPool, MAX_DIESEL_PARAM_SIZE},
     utils::errors::ProcessorError,
 };
 
@@ -31,7 +32,10 @@ pub use context::EventContext;
 pub use registry::{EventRegistry, EventRegistryBuilder, ProcessorId};
 pub use runner::EventIndexer;
 pub use traits::{
-    event_handler::{EventHandler, RetryPolicy},
+    event_handler::EventHandler,
     event_processor::{ArcEventProcessor, EventProcessor, ParsedItem},
-    indexable::{Indexable, Storer, TypedEventProcessor},
+    indexable::Indexable,
+    retry::RetryPolicy,
+    storer::Storer,
+    typed_processor::TypedEventProcessor,
 };

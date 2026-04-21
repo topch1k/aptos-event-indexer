@@ -9,6 +9,7 @@ description = "Generic Aptos indexer: register event types, persist to Postgres,
 anyhow.workspace = true
 aptos-indexer-processor-sdk.workspace = true
 async-trait.workspace = true
+backon.workspace = true
 chrono.workspace = true
 diesel.workspace = true
 diesel-async.workspace = true
