@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use aptos_event_indexer::{EventIndexer, EventRegistry, IndexerConfig, TypedEventProcessor};
 use clap::Parser;
-use diesel_migrations::{EmbeddedMigrations, embed_migrations};
+use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 
 use crate::events::{
     CounterDecrementedEvent, CounterIncrementedEvent, DecrementedStorer, GreetedEvent,

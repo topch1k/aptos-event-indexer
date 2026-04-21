@@ -232,11 +232,7 @@ pub struct GreeterStorer;
 
 #[async_trait]
 impl Storer<GreetedEvent> for GreeterStorer {
-    async fn store(
-        &self,
-        pool: &ArcDbPool,
-        items: &[(GreetedEvent, EventContext)],
-    ) -> Result<()> {
+    async fn store(&self, pool: &ArcDbPool, items: &[(GreetedEvent, EventContext)]) -> Result<()> {
         if items.is_empty() {
             return Ok(());
         }
