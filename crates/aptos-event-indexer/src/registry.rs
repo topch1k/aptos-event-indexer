@@ -67,3 +67,87 @@ impl EventRegistryBuilder {
         self.registry
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::Result;
+    use aptos_indexer_processor_sdk::aptos_protos::transaction::v1::Event;
+    use aptos_indexer_processor_sdk::postgres::utils::database::ArcDbPool;
+    use async_trait::async_trait;
+    use rstest::rstest;
+    use std::any::Any;
+
+    use crate::context::EventContext;
+    use crate::traits::event_processor::{EventProcessor, ParsedItem};
+
+    struct StubProcessor {
+        type_str: &'static str,
+        name: &'static str,
+    }
+
+    #[async_trait]
+    impl EventProcessor for StubProcessor {
+        fn type_str(&self) -> &str {
+            self.type_str
+        }
+        fn name(&self) -> &'static str {
+            self.name
+        }
+        fn parse(&self, _event: &Event, _ctx: &EventContext) -> Result<Box<dyn Any + Send + Sync>> {
+            Ok(Box::new(()))
+        }
+        async fn store(&self, _pool: &ArcDbPool, _items: &[ParsedItem]) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn stub(type_str: &'static str, name: &'static str) -> StubProcessor {
+        StubProcessor { type_str, name }
+    }
+
+    #[test]
+    fn default_registry_is_empty() {
+        let reg = EventRegistry::default();
+        assert!(reg.is_empty());
+        assert_eq!(reg.len(), 0);
+        assert!(reg.lookup("0x1::foo::Bar").is_none());
+    }
+
+    #[test]
+    fn register_assigns_sequential_ids_and_preserves_order() {
+        let reg = EventRegistry::builder()
+            .register(stub("0x1::a::A", "a"))
+            .register(stub("0x1::b::B", "b"))
+            .register(stub("0x1::c::C", "c"))
+            .build();
+
+        assert_eq!(reg.len(), 3);
+        assert_eq!(reg.lookup("0x1::a::A"), Some(ProcessorId(0)));
+        assert_eq!(reg.lookup("0x1::b::B"), Some(ProcessorId(1)));
+        assert_eq!(reg.lookup("0x1::c::C"), Some(ProcessorId(2)));
+        let names: Vec<_> = reg.processors().iter().map(|p| p.name()).collect();
+        assert_eq!(names, vec!["a", "b", "c"]);
+    }
+
+    #[rstest]
+    #[case("0x1::a::A", Some(0))]
+    #[case("0x1::b::B", Some(1))]
+    #[case("0x1::missing::X", None)]
+    #[case("", None)]
+    fn lookup_returns_expected_id(#[case] type_str: &str, #[case] expected: Option<u16>) {
+        let reg = EventRegistry::builder()
+            .register(stub("0x1::a::A", "a"))
+            .register(stub("0x1::b::B", "b"))
+            .build();
+        assert_eq!(reg.lookup(type_str).map(|p| p.0), expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate EventProcessor registered")]
+    fn duplicate_type_str_panics() {
+        EventRegistry::builder()
+            .register(stub("0x1::dup::D", "first"))
+            .register(stub("0x1::dup::D", "second"));
+    }
+}

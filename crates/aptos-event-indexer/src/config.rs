@@ -58,3 +58,56 @@ impl IndexerConfig {
         cfg
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn yaml_config(extra: &str) -> IndexerConfig {
+        let mut yaml = String::from(
+            "processor_name: head_proc\n\
+             transaction_stream:\n  \
+               indexer_grpc_data_service_address: http://localhost:50051\n  \
+               auth_token: test\n  \
+               request_name_header: aptos-event-indexer-test\n\
+             db:\n  \
+               postgres_connection_string: postgres://localhost/db\n",
+        );
+        yaml.push_str(extra);
+        serde_yaml::from_str(&yaml).expect("valid yaml config")
+    }
+
+    #[test]
+    fn status_key_uses_processor_name_in_head_mode() {
+        let cfg = yaml_config("");
+        assert!(matches!(cfg.mode, RunMode::Head));
+        assert_eq!(cfg.status_key(), "head_proc");
+    }
+
+    #[test]
+    fn status_key_uses_alias_in_backfill_mode() {
+        let cfg =
+            yaml_config("mode:\n  type: backfill\n  alias: bf_january\n  ending_version: 42\n");
+        assert_eq!(cfg.status_key(), "bf_january");
+    }
+
+    #[test]
+    fn effective_stream_config_leaves_ending_version_unset_in_head_mode() {
+        let cfg = yaml_config("");
+        assert_eq!(cfg.effective_stream_config().request_ending_version, None);
+    }
+
+    #[test]
+    fn effective_stream_config_sets_ending_version_in_backfill_mode() {
+        let cfg = yaml_config("mode:\n  type: backfill\n  alias: bf\n  ending_version: 100\n");
+        assert_eq!(
+            cfg.effective_stream_config().request_ending_version,
+            Some(100)
+        );
+    }
+
+    #[test]
+    fn run_mode_default_is_head() {
+        assert!(matches!(RunMode::default(), RunMode::Head));
+    }
+}

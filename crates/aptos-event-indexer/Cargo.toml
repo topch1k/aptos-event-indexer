@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 description = "Generic Aptos indexer: register event types, persist to Postgres, dispatch to custom handlers."
 
+[features]
+# Opt-in flag for tests that require Docker (via testcontainers). Without it,
+# the Postgres integration suite is marked `#[ignore]` so the default
+# `cargo test` stays hermetic.
+docker-tests = []
+
 [dependencies]
 anyhow.workspace = true
 aptos-indexer-processor-sdk.workspace = true
@@ -22,3 +28,11 @@ serde_yaml.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+rstest = "0.26"
+mockall = "0.13"
+testcontainers = "0.27"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
+diesel-async.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
