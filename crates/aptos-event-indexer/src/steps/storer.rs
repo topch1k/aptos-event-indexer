@@ -110,3 +110,73 @@ pub(crate) fn group_by_processor(batch: DispatchedBatch) -> Vec<(ProcessorId, Ve
     entries.sort_by_key(|(pid, _)| pid.0);
     entries
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::EventContext;
+    use crate::traits::event_processor::ParsedItem;
+
+    fn ctx(v: u64, i: u64) -> EventContext {
+        EventContext {
+            transaction_version: v,
+            event_index: i,
+            sequence_number: 0,
+            transaction_timestamp: None,
+            account_address: None,
+            creation_number: None,
+        }
+    }
+
+    fn item(v: u64, i: u64) -> ParsedItem {
+        ParsedItem::new((v, i), ctx(v, i))
+    }
+
+    #[test]
+    fn empty_batch_produces_no_groups() {
+        assert!(group_by_processor(vec![]).is_empty());
+    }
+
+    #[test]
+    fn single_processor_gets_single_group() {
+        let batch = vec![
+            (ProcessorId(7), item(1, 0)),
+            (ProcessorId(7), item(1, 1)),
+            (ProcessorId(7), item(2, 0)),
+        ];
+        let groups = group_by_processor(batch);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].0, ProcessorId(7));
+        assert_eq!(groups[0].1.len(), 3);
+    }
+
+    #[test]
+    fn groups_are_sorted_by_processor_id() {
+        let batch = vec![
+            (ProcessorId(5), item(1, 0)),
+            (ProcessorId(1), item(1, 1)),
+            (ProcessorId(3), item(1, 2)),
+            (ProcessorId(1), item(1, 3)),
+        ];
+        let groups = group_by_processor(batch);
+        let ids: Vec<u16> = groups.iter().map(|(pid, _)| pid.0).collect();
+        assert_eq!(ids, vec![1, 3, 5]);
+        assert_eq!(groups[0].1.len(), 2);
+    }
+
+    #[test]
+    fn preserves_intra_group_insertion_order() {
+        let batch = vec![
+            (ProcessorId(0), item(10, 0)),
+            (ProcessorId(0), item(20, 0)),
+            (ProcessorId(0), item(30, 0)),
+        ];
+        let groups = group_by_processor(batch);
+        let versions: Vec<u64> = groups[0]
+            .1
+            .iter()
+            .map(|it| it.ctx.transaction_version)
+            .collect();
+        assert_eq!(versions, vec![10, 20, 30]);
+    }
+}
