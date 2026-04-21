@@ -7,7 +7,7 @@ use aptos_indexer_processor_sdk::types::transaction_context::TransactionContext;
 use aptos_indexer_processor_sdk::utils::errors::ProcessorError;
 use async_trait::async_trait;
 use futures::future::try_join_all;
-use tracing::debug;
+use tracing::{debug, instrument, Instrument};
 
 use crate::registry::{EventRegistry, ProcessorId};
 use crate::steps::dispatcher::DispatchedBatch;
@@ -42,16 +42,33 @@ impl Processable for RegistryStorerStep {
     type Output = DispatchedBatch;
     type RunType = AsyncRunType;
 
+    #[instrument(
+        level = "debug",
+        name = "store_batch",
+        skip_all,
+        fields(
+            start_version = ctx.metadata.start_version,
+            end_version = ctx.metadata.end_version,
+            group_count = tracing::field::Empty,
+        ),
+        err,
+    )]
     async fn process(
         &mut self,
         ctx: TransactionContext<Self::Input>,
     ) -> Result<Option<TransactionContext<Self::Output>>, ProcessorError> {
         let groups = group_by_processor(ctx.data);
+        tracing::Span::current().record("group_count", groups.len());
 
         // Parallel across processors; each processor may chunk internally.
         let futures = groups.iter().map(|(pid, items)| {
             let processor = self.registry.processor(*pid).clone();
             let pool = self.pool.clone();
+            let span = tracing::debug_span!(
+                "processor_store",
+                processor = processor.name(),
+                batch_size = items.len(),
+            );
             async move {
                 processor
                     .store(&pool, items)
@@ -60,16 +77,12 @@ impl Processable for RegistryStorerStep {
                         message: format!("processor `{}` store failed: {e:#}", processor.name()),
                     })
             }
+            .instrument(span)
         });
 
         try_join_all(futures).await?;
 
-        debug!(
-            start_version = ctx.metadata.start_version,
-            end_version = ctx.metadata.end_version,
-            groups = groups.len(),
-            "stored batch"
-        );
+        debug!(groups = groups.len(), "stored batch");
 
         // Reassemble passthrough payload so downstream steps (handlers,
         // OrderBy, VersionTracker) can still see the items. Preserve

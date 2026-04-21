@@ -8,7 +8,17 @@
 //! Each processor is responsible for parsing, Postgres persistence, and
 //! optional custom side-effects (Kafka / Service Bus / HTTP / …).
 //!
-//! See the `marketplace-indexer` example for end-to-end usage.
+//! ## Tracing
+//!
+//! Every pipeline step is instrumented with `tracing` spans — `event_indexer`
+//! (info) at the top, per-batch `dispatch_batch` / `store_batch` /
+//! `handle_batch` (debug) for each stream batch, and per-processor child
+//! spans `processor_store` / `typed_store` / `typed_handle` / `run_handler`
+//! carrying the processor name, fully-qualified Move type, and batch size.
+//! Consumers initialize their own `tracing_subscriber`; see the
+//! `counter-indexer` example.
+//!
+//! See the `counter-indexer` example for end-to-end usage.
 
 pub mod config;
 pub mod context;

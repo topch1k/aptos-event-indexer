@@ -18,7 +18,7 @@ use aptos_indexer_processor_sdk::{
     traits::IntoRunnableStep,
     utils::chain_id_check::check_or_update_chain_id,
 };
-use tracing::info;
+use tracing::{info, instrument};
 
 use crate::config::IndexerConfig;
 use crate::registry::EventRegistry;
@@ -45,6 +45,17 @@ impl EventIndexer {
     /// The indexer process is the entire library's entry point: it applies
     /// migrations, verifies the chain id, resolves the starting version, and
     /// drives the SDK's `ProcessorBuilder` to exhaustion.
+    #[instrument(
+        level = "info",
+        name = "event_indexer",
+        skip_all,
+        fields(
+            processor = self.config.processor_name.as_str(),
+            status_key = self.config.status_key(),
+            mode = ?self.config.mode,
+        ),
+        err,
+    )]
     pub async fn run(self) -> Result<()> {
         assert!(
             !self.registry.is_empty(),
@@ -54,12 +65,7 @@ impl EventIndexer {
         let Self { config, registry } = self;
         let registry = Arc::new(registry);
 
-        info!(
-            processor = config.processor_name.as_str(),
-            status_key = config.status_key(),
-            processors = registry.len(),
-            "starting indexer"
-        );
+        info!(processors = registry.len(), "starting indexer");
 
         // 1. Pool + migrations (library + every registered processor).
         let pool = new_db_pool(&config.db.postgres_connection_string, config.db.pool_size)

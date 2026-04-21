@@ -9,7 +9,7 @@ use aptos_indexer_processor_sdk::postgres::utils::database::ArcDbPool;
 use async_trait::async_trait;
 use backon::Retryable;
 use diesel_migrations::EmbeddedMigrations;
-use tracing::{error, warn};
+use tracing::{error, instrument, warn, Instrument};
 
 use crate::context::EventContext;
 use crate::traits::event_handler::EventHandler;
@@ -84,6 +84,11 @@ impl<E: Indexable> TypedEventProcessor<E> {
         let policy = handler.retry_policy();
         let backoff = policy.to_backoff();
         let handler_name = handler.name();
+        let span = tracing::debug_span!(
+            "run_handler",
+            handler = handler_name,
+            batch_size = batch.len(),
+        );
 
         let outcome = (|| async { handler.handle(batch).await })
             .retry(backoff)
@@ -95,6 +100,7 @@ impl<E: Indexable> TypedEventProcessor<E> {
                     "handler failed, retrying"
                 );
             })
+            .instrument(span)
             .await;
 
         if let Err(err) = outcome {
@@ -124,6 +130,17 @@ impl<E: Indexable> EventProcessor for TypedEventProcessor<E> {
         Ok(Box::new(parsed))
     }
 
+    #[instrument(
+        level = "debug",
+        name = "typed_store",
+        skip_all,
+        fields(
+            processor = E::NAME,
+            type_str = %self.type_str,
+            batch_size = items.len(),
+        ),
+        err,
+    )]
     async fn store(&self, pool: &ArcDbPool, items: &[ParsedItem]) -> Result<()> {
         let typed = Self::downcast_items(items)?;
         let owned: Vec<(E, EventContext)> =
@@ -131,6 +148,17 @@ impl<E: Indexable> EventProcessor for TypedEventProcessor<E> {
         self.storer.store(pool, &owned).await
     }
 
+    #[instrument(
+        level = "debug",
+        name = "typed_handle",
+        skip_all,
+        fields(
+            processor = E::NAME,
+            type_str = %self.type_str,
+            batch_size = items.len(),
+            handlers = self.handlers.len(),
+        ),
+    )]
     async fn handle(&self, items: &[ParsedItem]) -> Result<()> {
         if self.handlers.is_empty() {
             return Ok(());
