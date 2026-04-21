@@ -74,5 +74,8 @@ async fn main() -> Result<()> {
         )
         .build();
 
-    EventIndexer::new(config, registry).run().await
+    EventIndexer::new(config, registry)
+        .run()
+        .await
+        .map_err(anyhow::Error::from)
 }
